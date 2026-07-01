@@ -1,0 +1,16 @@
+# DeepSeek API 配置
+# 注册 API Key: https://platform.deepseek.com
+llm:
+  provider: deepseek
+  model: deepseek-chat
+  api_key: "${DEEPSEEK_API_KEY}"   # 从环境变量读取
+  base_url: https://api.deepseek.com/v1
+  temperature: 0.3
+
+# 项目根目录（skills/ 和 tools/ 的相对基准）
+project_root: ".."
+
+# Agent 配置
+agent:
+  max_iterations: 30
+  verbose: true
