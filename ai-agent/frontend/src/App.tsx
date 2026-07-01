@@ -98,7 +98,7 @@ function AppShell() {
 
   useEffect(() => {
     const hasActive = projects.some((p) =>
-      p.sources.some((s) => s.status === 'running' || s.status === 'cancelling'),
+      p.sources.some((s) => s.status === 'running'),
     );
     if (!hasActive) return;
     const timer = window.setInterval(() => {
@@ -250,9 +250,9 @@ function AppShell() {
           {projects.map((project) => {
             const expanded = expandedProjectId === project.id;
             const current = activeProjectId === project.id;
-            const running = project.sources.filter((s) => s.status === 'running' || s.status === 'cancelling');
+            const running = project.sources.filter((s) => s.status === 'running');
             const available = project.sources.filter((s) => s.status === 'completed' || s.status === 'ready');
-            const history = project.sources.filter((s) => s.status === 'failed' || s.status === 'cancelled');
+            const failed = project.sources.filter((s) => s.status === 'failed');
             return (
               <div key={project.id} className={`project-card ${current ? 'active' : ''}`}>
                 <div className="project-main" onClick={() => selectProject(project.id)}>
@@ -325,9 +325,15 @@ function AppShell() {
                       <Empty description="暂无数据源" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                     ) : null}
 
-                    {history.length > 0 && (
-                      <div className="history-status">
-                        {history.map((source) => <Tag key={source.key}>{source.title} · {source.status}</Tag>)}
+                    {failed.length > 0 && (
+                      <div className="failed-section">
+                        <Text type="danger">失败</Text>
+                        {failed.map((source) => (
+                          <div key={source.key} className="failed-item">
+                            <Text type="danger" ellipsis>{source.title}</Text>
+                            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteSource(source)} />
+                          </div>
+                        ))}
                       </div>
                     )}
 

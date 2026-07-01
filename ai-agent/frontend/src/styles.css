@@ -26,6 +26,8 @@ html, body, #root { margin: 0; min-height: 100%; background: #090d14; }
 .running-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-bottom: 10px; padding: 9px; border-radius: 12px; background: rgba(59, 130, 246, .12); }
 .history-status { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chat-history { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.failed-section { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; background: rgba(239, 68, 68, .08); border: 1px solid rgba(239, 68, 68, .18); }
+.failed-item { display: flex; align-items: center; justify-content: space-between; }
 .chat-history-row { display: flex; align-items: center; justify-content: space-between; border-radius: 10px; background: rgba(15, 23, 42, .55); }
 .topbar { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: rgba(9, 13, 20, .86); border-bottom: 1px solid rgba(148, 163, 184, 0.14); backdrop-filter: blur(12px); }
 .topbar-actions { display: flex; align-items: center; gap: 12px; }

@@ -7,8 +7,8 @@ llm:
   base_url: https://api.deepseek.com/v1
   temperature: 0.3
 
-# 项目根目录（skills/ 和 tools/ 的相对基准）
-project_root: ".."
+# 项目根目录
+project_root: "."
 
 # Agent 配置
 agent:

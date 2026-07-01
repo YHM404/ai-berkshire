@@ -65,9 +65,9 @@ def main():
         sys.exit(1)
 
     config = load_config(config_path)
-    project_root = (script_dir / config.get("project_root", "..")).resolve()
-    skills_dir = project_root / "skills"
-    tools_dir = project_root / "tools"
+    project_root = script_dir
+    skills_dir = script_dir / "skills"
+    tools_dir = script_dir / "tools"
 
     if not skills_dir.exists():
         console.print(f"[red]Skills 目录不存在: {skills_dir}[/red]")

@@ -35,6 +35,7 @@ install:
 build:
 	python -m py_compile server/app.py agent/chat_agent.py agent/runner.py web/db.py
 	uv run python scripts/verify_final_report_only.py
+	uv run python scripts/verify_research_report_tool.py
 	cd frontend && npm run test:markdown
 	cd frontend && npm run build
 

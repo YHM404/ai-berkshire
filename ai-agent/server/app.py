@@ -6,13 +6,13 @@ import json
 import os
 import re
 import threading
-import time
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from langchain_core.tools import tool
 from pydantic import BaseModel
 
 from agent.chat_agent import _make_fetch_webpage, build_chat_agent
@@ -84,7 +84,23 @@ def _final_ai_answer_from_messages(messages: list[Any]) -> str:
     return final_answer
 
 
+def _capture_research_report(captured: dict[str, str]):
+    """Create a tool that captures the final research report for persistence."""
+
+    @tool
+    def submit_research_report(report_markdown: str) -> str:
+        """提交最终调研报告。调研完成后必须调用一次，参数是完整 Markdown 最终报告，不要包含中间过程。"""
+        captured["report_markdown"] = report_markdown.strip()
+        return "已接收最终调研报告，后端会保存该报告。"
+
+    return submit_research_report
+
+
 init_db(DB_PATH)
+# 清理上次运行残留（服务器重启后没有线程在执行的 session，直接删除）
+get_db(DB_PATH).execute(
+    "DELETE FROM research_sessions WHERE status IN ('running', 'cancelling')"
+).connection.commit()
 if get_user_count(DB_PATH) == 0:
     create_user(DB_PATH, "admin", "admin")
 ADMIN = verify_user(DB_PATH, "admin", "admin")["user"]
@@ -211,7 +227,12 @@ def build_context(source_keys: list[str]) -> str:
 
 
 def run_research(session_id: int, query: str):
+    """Run research with streaming (for cancellation) and persist report via final-report tool."""
+    captured: dict[str, str] = {}
+    final_report = ""
+    print(f"[research:{session_id}] start: {query[:80]}")
     try:
+        final_report_tool = _capture_research_report(captured)
         agent = build_agent(
             skills_dir=Path(CONFIG["project_root"]) / "skills",
             tools_dir=Path(CONFIG["project_root"]) / "tools",
@@ -220,22 +241,42 @@ def run_research(session_id: int, query: str):
             api_key=CONFIG["llm"]["api_key"],
             base_url=CONFIG["llm"].get("base_url", "https://api.deepseek.com/v1"),
             temperature=float(CONFIG["llm"].get("temperature", 0.3)),
+            extra_tools=[final_report_tool],
+            extra_system_instructions="""
+后端调研保存规则：
+- 你完成所有调研、搜索、验证、计算后，必须调用 submit_research_report(report_markdown=...)。
+- report_markdown 必须是完整最终 Markdown 调研报告，只包含最终结论、依据、数据来源、风险与置信度，不要包含工具调用日志、搜索原文堆叠或中间推理过程。
+- 调用 submit_research_report 后，你可以用一句话说明报告已提交，不要再次输出完整报告。
+""",
         )
-        final_report = ""
+        chunk_count = 0
         for chunk in agent.stream({"messages": [{"role": "user", "content": query}]}, stream_mode="updates"):
+            chunk_count += 1
             if session_id in _CANCELLED:
-                update_session(DB_PATH, session_id, status="cancelled", report_md=final_report)
+                print(f"[research:{session_id}] cancelled at chunk {chunk_count}")
                 _CANCELLED.discard(session_id)
                 return
             for _, update in chunk.items():
                 candidate = _final_ai_answer_from_messages(update.get("messages", []))
                 if candidate:
                     final_report = candidate
-        status = "cancelled" if session_id in _CANCELLED else "completed"
-        _CANCELLED.discard(session_id)
-        update_session(DB_PATH, session_id, status=status, report_md=final_report)
+
+        print(f"[research:{session_id}] stream done, chunks={chunk_count}, tool_report={'yes' if captured.get('report_markdown') else 'no'}, fallback={'yes' if final_report else 'no'}")
+
+        # 用户可能在最后一批 chunk 后点了取消，不再覆盖 DB
+        if session_id in _CANCELLED:
+            _CANCELLED.discard(session_id)
+            return
+
+        report = captured.get("report_markdown") or final_report
+        if not report.strip():
+            raise RuntimeError("Agent 未返回最终调研报告")
+        update_session(DB_PATH, session_id, status="completed", report_md=report)
+        print(f"[research:{session_id}] completed, report_len={len(report)}")
     except Exception as exc:
-        update_session(DB_PATH, session_id, status="failed", report_md=f"❌ {exc}")
+        print(f"[research:{session_id}] failed: {exc}")
+        if session_id not in _CANCELLED:
+            update_session(DB_PATH, session_id, status="failed", report_md=f"❌ {exc}")
 
 
 @app.get("/api/health")
@@ -290,7 +331,7 @@ def api_start_research(project_id: int, body: ResearchCreate):
     query = body.query.strip()
     if not query:
         raise HTTPException(400, "Query required")
-    active = [s for s in list_sessions(DB_PATH, USER_ID, project_id=project_id) if s["type"] == "research" and s["status"] in {"running", "cancelling"}]
+    active = [s for s in list_sessions(DB_PATH, USER_ID, project_id=project_id) if s["type"] == "research" and s["status"] == "running"]
     if active:
         raise HTTPException(409, "Research already running")
     sid = create_session(DB_PATH, USER_ID, query, project_id=project_id, session_type="research")
@@ -301,7 +342,7 @@ def api_start_research(project_id: int, body: ResearchCreate):
 @app.post("/api/sessions/{session_id}/cancel")
 def api_cancel_research(session_id: int):
     _CANCELLED.add(session_id)
-    update_session(DB_PATH, session_id, status="cancelling")
+    delete_session(DB_PATH, session_id)
     return {"ok": True}
 
 
